@@ -1,0 +1,682 @@
+---
+title: "Qiime_2021_final"
+author: "Sarah Tucker"
+date: "9/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+
+```{bash}
+
+###idk why but the data came back to us not named like the typical casssava files 
+
+cd /tank/tucker_data/2021_MiSeqFinal/files.cgrb.oregonstate.edu/Illumina/210816_M01498_0823_000000000-JPJTC-updated/BaseCalls/
+
+
+for f in *R2_001.fastq.gz; do mv $f ${f%*R2_001.fastq.gz}L001_R2_001.fastq.gz; done
+
+for f in *R1_001.fastq.gz; do mv $f ${f%*R1_001.fastq.gz}L001_R1_001.fastq.gz; done
+
+
+```
+
+
+
+```{python}
+
+screen -S Miseq 
+
+source /opt/anvio_conda/miniconda3/bin/activate bio-gen
+conda activate qiime2-2021.4
+
+qiime tools import --show-importable-types
+
+cd /tank/tucker_data/MiSeq/files.cgrb.oregonstate.edu/Illumina/210816_M01498_0823_000000000-JPJTC/BaseCalls
+
+
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path /tank/tucker_data/2021_MiSeqFinal/files.cgrb.oregonstate.edu/Illumina/210816_M01498_0823_000000000-JPJTC-updated/BaseCalls \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end.qza 
+  
+  
+
+```
+
+
+```{bash, eval=FALSE}
+  
+qiime demux summarize \
+  --i-data  /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end.qza   \
+  --o-visualization  /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end.qzv 
+
+```
+
+
+
+```{bash}
+
+qiime cutadapt trim-paired \
+    --i-demultiplexed-sequences /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end.qza \
+    --p-adapter-f 'GTGYCAGCMGCCGCGGTAA$' \
+    --p-adapter-r 'CCGYCAATTYMTTTRAGTTT$' \
+    --o-trimmed-sequences /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end-trimmed.qza \
+    --p-cores 20\
+    --verbose
+
+###i dont think anything was trimmed really...
+
+qiime demux summarize \
+  --i-data /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end-trimmed.qza  \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end-trimmed.qzv
+
+
+```
+
+
+
+```{bash}
+
+qiime dada2 denoise-single \
+  --i-demultiplexed-seqs /tank/tucker_data/MiSeq_Analysis_2021_Final/demux-paired-end-trimmed.qza \
+  --p-trunc-len 251 \
+  --o-representative-sequences /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-dada2_AllSeqs.qza \
+  --o-table /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_table-dada2_AllSeqs.qza \
+  --o-denoising-stats /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_stats-dada2_AllSeqs.qza \
+  --p-n-threads 30
+  
+
+
+qiime metadata tabulate \
+  --m-input-file /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_stats-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_stats-dada2_AllSeqs.qzv
+  
+  
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_table-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_table-dada2_AllSeqs.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/metadata.tsv
+  
+  
+qiime feature-table tabulate-seqs \
+  --i-data /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-dada2_AllSeqs.qzv
+
+
+
+
+```
+
+
+
+
+
+
+```{bash}
+
+##insert training bit here##
+
+###in the future lets not truncate the reads! 
+
+qiime feature-classifier extract-reads \
+  --i-sequences /tank/tucker_data/MiSeq_Analysis_Sep082021/silva-138-99-seqs.qza \
+  --p-f-primer GTGCCAGCMGCCGCGGTAA \
+  --p-r-primer CCGYCAATTYMTTTRAGTTT \
+  --p-trunc-len 251 \
+  --p-min-length 100 \
+  --p-max-length 500 \
+  --o-reads /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-ref-seqs.qza
+
+####The --p-trunc-len parameter should only be used to trim reference sequences if query sequences are trimmed to this same length or shorter. Paired-end sequences that successfully join will typically be variable in length. Single-end reads that are not truncated at a specific length may also be variable in length. For classification of paired-end reads and untrimmed single-end reads, we recommend training a classifier on sequences that have been extracted at the appropriate primer sites, but are not trimmed.
+
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-ref-seqs.qza \
+  --i-reference-taxonomy /tank/tucker_data/MiSeq_Analysis_Sep082021/silva-138-99-tax.qza \
+  --o-classifier /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-classifier.qza
+
+
+
+```
+
+
+
+
+```{bash}
+qiime feature-classifier classify-sklearn \
+  --i-classifier /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-classifier.qza \
+  --i-reads /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-dada2_AllSeqs.qza  \
+  --o-classification /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza \
+  --p-n-jobs 15
+
+qiime metadata tabulate \
+  --m-input-file /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qzv
+  
+
+qiime taxa barplot --i-table  /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_table-dada2_AllSeqs.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_taxa-bar-plots.qzv
+  
+```
+
+
+
+
+
+```{bash}
+
+###renaming sample IDS
+
+qiime feature-table group \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_table-dada2_AllSeqs.qza \
+  --p-axis sample \
+  --m-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/metadata.tsv \
+  --m-metadata-column Seq2 \
+  --p-mode sum \
+  --o-grouped-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_table-dada2_AllSeqs.qza
+
+
+
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_table-dada2_AllSeqs.qza \
+  --o-visualization  /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_table-dada2_AllSeqs.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/New_metadata.tsv
+
+qiime taxa barplot --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_table-dada2_AllSeqs.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_taxa-bar-plots.qzv
+
+
+```
+
+
+```{bash}
+
+##get rid of samples that were poorly sequenced I got rid of all samples under 1,000 quality control reads. This included all the negatives, but also a number of JdFR samples, 3 KByT samples (NBJu0836, R2De0742, R2Ap0782), and a mangrove sample (Mg020bot). It looks like people are not recommending repeating the denoising step and instead recommending just a filtering base on sample: https://forum.qiime2.org/t/remove-blank-samples/9119
+
+
+
+qiime feature-table filter-samples \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Renamed-251-2021-single_table-dada2_AllSeqs.qza \
+  --m-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/New_metadata.tsv\
+  --p-where "[keep]='keep'" \
+  --o-filtered-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Quality-Samples-2021-251-filtered-table.qza
+  
+
+qiime taxa barplot --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Quality-Samples-2021-251-filtered-table.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/Quality-Samples-251-2021-single_taxa-bar-plots.qzv
+
+
+
+
+
+
+######have just KByT samples 
+
+qiime feature-table filter-samples \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/Quality-Samples-2021-251-filtered-table.qza \
+  --m-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/New_metadata.tsv \
+  --p-where "[Project]='KByT'" \
+  --o-filtered-table /tank/tucker_data/MiSeq_Analysis_2021_Final/KByT-2021-251-filtered-table.qza
+  
+
+
+qiime taxa barplot --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/KByT-2021-251-filtered-table.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/KByT-251-2021-single_taxa-bar-plots.qzv
+
+
+
+
+
+```
+
+
+
+###this is a test
+```{bash}
+qiime tools export \
+  --input-path  /tank/tucker_data/MiSeq_Analysis_2021_Final/KByT-2021-251-filtered-table.qza \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-KByT-2021-251-test-filtered-feature-table
+
+cd /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-KByT-2021-251-test-filtered-feature-table
+biom convert -i feature-table.biom -o test-feature-table.tsv --to-tsv
+
+
+qiime tools export \
+  --input-path /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qza  \
+  --output-path /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/test-filtered-feature-table
+
+cd /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/test-filtered-feature-table
+biom convert -i feature-table.biom -o test-2019-feature-table.tsv --to-tsv
+
+
+
+
+```
+
+
+
+###adding in Redo of 2019
+
+
+##############redoing all of 2019
+#This is technically already how DADA2 works. It makes the error model using all the samples from the same run, then uses that model to denoise each read separately and independently, this is why it is nicely parallelizable.
+
+
+```{python}
+
+screen -S Miseq 
+
+source /opt/anvio_conda/miniconda3/bin/activate bio-gen
+conda activate qiime2-2021.4
+
+qiime tools import --show-importable-types
+
+cd /tank/tucker_data/Base_Calls_manuscript
+
+
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path /tank/tucker_data/Base_Calls_manuscript \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end.qza 
+  
+  
+
+```
+
+
+**(2) Generate a summary to evaluate the data, it will help determine how to truncate data in a future step.**
+
+```{bash, eval=FALSE}
+  
+qiime demux summarize \
+  --i-data /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end.qzv
+
+```
+
+
+
+**(3) Use Cutadapt to remove primers**
+
+https://forum.qiime2.org/t/trimming-primers-from-both-ends-of-paired-end-reads/9984
+https://docs.qiime2.org/2017.12/plugins/available/cutadapt/demux-paired/
+
+
+```{bash}
+
+qiime cutadapt trim-paired \
+    --i-demultiplexed-sequences /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end.qza \
+    --p-adapter-f 'GTGYCAGCMGCCGCGGTAA$' \
+    --p-adapter-r 'CCGYCAATTYMTTTRAGTTT$' \
+    --o-trimmed-sequences /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end-trimmed.qza \
+    --p-cores 5\
+    --verbose
+
+###i dont think anything was trimmed really...
+
+qiime demux summarize \
+  --i-data /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end-trimmed.qza  \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end-trimmed.qzv
+
+
+```
+
+
+
+
+```{bash}
+
+###uggghh lets go for single reads 
+
+qiime dada2 denoise-single \
+  --i-demultiplexed-seqs /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo2019-demux-paired-end-trimmed.qza \
+  --p-trunc-len 251 \
+  --o-representative-sequences  /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_rep-seqs-dada2_AllSeqs.qza \
+  --o-table /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_table-dada2_AllSeqs.qza \
+  --o-denoising-stats /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_stats-dada2_AllSeqs.qza \
+  --p-n-threads 20
+  
+  
+
+qiime metadata tabulate \
+  --m-input-file /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_stats-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_stats-dada2_AllSeqs.qzv
+  
+  
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_table-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_table-dada2_AllSeqs.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Redo_run2019_New_Seasons_No_repsMetaData_KByt08192020.tsv
+  
+  
+qiime feature-table tabulate-seqs \
+  --i-data single_rep-seqs-dada2_AllSeqs.qza \
+  --o-visualization single_rep-seqs-dada2_AllSeqs.qzv
+  
+```
+
+
+
+
+```{bash}
+
+##insert training bit here##
+
+###in the future lets not truncate the reads! 
+
+qiime feature-classifier extract-reads \
+  --i-sequences /tank/tucker_data/MiSeq_Analysis_Sep082021/silva-138-99-seqs.qza \
+  --p-f-primer GTGCCAGCMGCCGCGGTAA \
+  --p-r-primer CCGYCAATTYMTTTRAGTTT \
+  --p-trunc-len 251 \
+  --p-min-length 100 \
+  --p-max-length 500 \
+  --o-reads /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-ref-seqs.qza
+
+####The --p-trunc-len parameter should only be used to trim reference sequences if query sequences are trimmed to this same length or shorter. Paired-end sequences that successfully join will typically be variable in length. Single-end reads that are not truncated at a specific length may also be variable in length. For classification of paired-end reads and untrimmed single-end reads, we recommend training a classifier on sequences that have been extracted at the appropriate primer sites, but are not trimmed.
+
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-ref-seqs.qza \
+  --i-reference-taxonomy /tank/tucker_data/MiSeq_Analysis_Sep082021/silva-138-99-tax.qza \
+  --o-classifier /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-classifier.qza
+
+
+
+```
+
+
+
+```{bash}
+qiime feature-classifier classify-sklearn \
+  --i-classifier /tank/tucker_data/MiSeq_Analysis_Sep082021/Trim251-run2021/251-classifier.qza \
+  --i-reads /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_rep-seqs-dada2_AllSeqs.qza \
+  --o-classification /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qza
+
+qiime metadata tabulate \
+  --m-input-file /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qzv
+  
+
+qiime taxa barplot --i-table  /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_table-dada2_AllSeqs.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qza --o-visualization  /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_taxa-bar-plots.qzv
+  
+```
+
+
+```{bash}
+
+###renaming sample IDS
+
+qiime feature-table group \
+  --i-table /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_table-dada2_AllSeqs.qza \
+  --p-axis sample \
+  --m-metadata-file /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Redo_run2019_New_Seasons_No_repsMetaData_KByt08192020.tsv \
+  --m-metadata-column Seq \
+  --p-mode sum \
+  --o-grouped-table /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qza
+
+###start here for both
+
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/New_Redo_run2019_New_Seasons_No_repsMetaData_KByt08192020.tsv
+
+qiime taxa barplot --i-table  /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qza --o-visualization  /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_taxa-bar-plots.qzv
+
+
+```
+
+
+
+
+
+
+
+```{bash}
+
+
+
+#######Time to merge!! 
+qiime feature-table merge \
+  --i-tables /tank/tucker_data/MiSeq_Analysis_2021_Final/KByT-2021-251-filtered-table.qza \
+  --i-tables /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/Renamed-redo-2019-single_table-dada2_AllSeqs.qza \
+  --o-merged-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_table.qza
+
+
+qiime feature-table merge-seqs \
+  --i-data /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-dada2_AllSeqs.qza  \
+  --i-data /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_rep-seqs-dada2_AllSeqs.qza \
+  --o-merged-data /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-rep-seqs.qza
+
+
+
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_table.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_table.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/2021_2019_metadata.tsv
+
+
+qiime feature-table tabulate-seqs \
+  --i-data /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-rep-seqs.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-rep-seqs.qzv
+
+
+###https://forum.qiime2.org/t/merging-feature-tables-should-i-also-merge-taxonomy-or-does-it-need-to-be-re-run/15678/2
+
+
+qiime feature-table merge-taxa \
+--i-data /tank/tucker_data/MiSeq_Analysis_2021_Final/251-2021-single_rep-seqs-taxonomy.qza \
+  --i-data /tank/tucker_data/MiSeq_Analysis_Sep082021/Redo_2019/redo-2019-single_read_taxonomy.qza \
+  --o-merged-data /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_taxonomy.qza
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+```{bash}
+
+
+
+
+#This filter can be applied to the feature axis to remove low abundance features from a table. For example, you can remove all features with a total abundance (summed across all samples) of less than 10 as follows.
+
+
+qiime feature-table filter-features \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_table.qza \
+  --p-min-frequency 10 \
+  --o-filtered-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-feature-frequency-filtered-table.qza
+  
+
+  
+  
+#This filtering is commonly used for filtering features that show up in only one or a few samples, based on the suspicion that these may not represent real biological diversity but rather PCR or sequencing errors (such as PCR chimeras). Features that are present in only a single sample could be filtered from a feature table as follows.
+
+  
+qiime feature-table filter-features \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-feature-frequency-filtered-table.qza \
+  --p-min-samples 2 \
+  --o-filtered-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-final-filtered-table.qza
+
+
+
+
+qiime feature-table summarize \
+  --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-final-filtered-table.qza \
+  --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-final-filtered-table.qzv \
+  --m-sample-metadata-file /tank/tucker_data/MiSeq_Analysis_2021_Final/2021_2019_metadata.tsv
+
+
+
+qiime taxa barplot --i-table /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-final-filtered-table.qza --i-taxonomy /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_taxonomy.qza --o-visualization /tank/tucker_data/MiSeq_Analysis_2021_Final/Filtered-2019-2021-taxa-bar-plots.qzv
+
+
+
+
+
+
+#https://docs.qiime2.org/2021.4/tutorials/filtering/
+
+
+qiime phylogeny align-to-tree-mafft-fasttree \
+  --i-sequences /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-rep-seqs.qza \
+  --o-alignment /tank/tucker_data/MiSeq_Analysis_2021_Final/aligned_MiSeq_merged_2021_2019-rep-seqs.qza \
+  --o-masked-alignment /tank/tucker_data/MiSeq_Analysis_2021_Final/masked_aligned_MiSeq_merged_2021_2019-rep-seqs.qza \
+  --o-tree /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_unrooted-tree.qza \
+  --o-rooted-tree /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_rooted-tree.qza
+
+
+#Saved FeatureData[AlignedSequence] to: single_aligned-rep-seqs.qza
+#Saved FeatureData[AlignedSequence] to: masked-single_aligned-rep-seqs.qza
+#Saved Phylogeny[Unrooted] to: unrooted-tree.qza
+#Saved Phylogeny[Rooted] to: rooted-tree.qza
+
+
+ qiime tools export \
+  --input-path  /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-rep-seqs.qza \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-rep-seqs
+
+
+##more prep
+qiime tools export \
+  --input-path /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_unrooted-tree.qza \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/unrooted-exported-tree
+
+qiime tools export \
+  --input-path /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019-final-filtered-table.qza \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-filtered-feature-table
+
+cd /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-filtered-feature-table
+biom convert -i feature-table.biom -o feature-table.tsv --to-tsv
+
+
+qiime tools export \
+  --input-path /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_rooted-tree.qza \
+  --output-path /tank/tucker_data/MiSeq_Analysis_2021_Final/rooted-exported-tree
+
+qiime tools export \
+  --input-path /tank/tucker_data/MiSeq_Analysis_2021_Final/MiSeq_merged_2021_2019_taxonomy.qza \
+  --output-path  /tank/tucker_data/MiSeq_Analysis_2021_Final/exported-taxonomy
+ 
+ qiime tools export \
+  --input-path single_aligned-rep-seqs.qza \
+  --output-path exported-rep-seqs
+ 
+  
+ qiime tools export \
+  --input-path masked-single_aligned-rep-seqs.qza \
+  --output-path exported-masked-rep-seqs
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+###Redo 2021 with 251
+
+
+
+
+
+```{bash}
+
+
+
+
+#This filter can be applied to the feature axis to remove low abundance features from a table. For example, you can remove all features with a total abundance (summed across all samples) of less than 10 as follows.
+
+
+qiime feature-table filter-features \
+  --i-table table.qza \
+  --p-min-frequency 10 \
+  --o-filtered-table feature-frequency-filtered-table.qza
+  
+  
+#This filtering is commonly used for filtering features that show up in only one or a few samples, based on the suspicion that these may not represent real biological diversity but rather PCR or sequencing errors (such as PCR chimeras). Features that are present in only a single sample could be filtered from a feature table as follows.
+
+  
+qiime feature-table filter-features \
+  --i-table table.qza \
+  --p-min-samples 2 \
+  --o-filtered-table sample-contingency-filtered-table.qza
+
+
+
+
+#https://docs.qiime2.org/2021.4/tutorials/filtering/
+
+
+
+
+qiime phylogeny align-to-tree-mafft-fasttree \
+  --i-sequences single_rep-seqs-dada2_AllSeqs.qza \
+  --o-alignment single_aligned-rep-seqs.qza \
+  --o-masked-alignment masked-single_aligned-rep-seqs.qza \
+  --o-tree unrooted-tree.qza \
+  --o-rooted-tree rooted-tree.qza
+
+
+#Saved FeatureData[AlignedSequence] to: single_aligned-rep-seqs.qza
+#Saved FeatureData[AlignedSequence] to: masked-single_aligned-rep-seqs.qza
+#Saved Phylogeny[Unrooted] to: unrooted-tree.qza
+#Saved Phylogeny[Rooted] to: rooted-tree.qza
+
+
+##more prep
+qiime tools export \
+  --input-path unrooted-tree.qza \
+  --output-path exported-tree
+
+qiime tools export \
+  --input-path good-quality-filtered-table.qza \
+  --output-path exported-good-quality-filtered-feature-table
+
+cd exported-good-quality-filtered-feature-table
+biom convert -i feature-table.biom -o feature-table.tsv --to-tsv
+
+
+qiime tools export \
+  --input-path unrooted-tree.qza \
+  --output-path exported-tree
+
+qiime tools export \
+  --input-path single_read_taxonomy.qza \
+  --output-path exported-taxonomy
+ 
+ qiime tools export \
+  --input-path single_aligned-rep-seqs.qza \
+  --output-path exported-rep-seqs
+ 
+  
+ qiime tools export \
+  --input-path masked-single_aligned-rep-seqs.qza \
+  --output-path exported-masked-rep-seqs
+
+
+single_read_taxonomy.qza
+
+```
+
