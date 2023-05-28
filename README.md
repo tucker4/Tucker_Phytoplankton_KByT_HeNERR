@@ -6,14 +6,9 @@ Inundated by oligotrophic oceanic waters, the nearshore waters of tropical islan
 
 ## Directory Information
 
-ANALYSIS folder
-execute code -- these are outputs from the code chunks in R
-Main Tables and Figures -- these are found in the manuscript text, slightly modified figure outputs
+analysis folder
+Includes code and necessary input/output files for code.
+Divided into three subdirectories: Figures & Analyses (which included analyses for sequence data & metadata), Metagenomics (QC, read recruitment to isolate genomes, and ANI between genomes), Qiime to Phyloseq (processing raw MiSeq reads).
 
-
-FIGURES folder
-execute code -- these are outputs from the code chunks in R
-Main Tables and Figures -- these are found in the manuscript text, slightly modified figure outputs
-
-OUTPUT folder
-assorted outputs from running Rmd code, some used in figure and table summaries
+data folder
+assorted data files that are fundamental to analyses and include both input and output from analyses.
