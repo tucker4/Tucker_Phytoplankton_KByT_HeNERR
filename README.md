@@ -6,9 +6,9 @@ Inundated by oligotrophic oceanic waters, the nearshore waters of tropical islan
 
 ## Directory Information
 
-analysis folder
+**analysis folder**
 Includes code and necessary input/output files for code.
 Divided into three subdirectories: Figures & Analyses (which includes analyses for sequence data & metadata), Metagenomics (QC, read recruitment to isolate genomes, and ANI between genomes), Qiime to Phyloseq (processing raw MiSeq reads).
 
-data folder
+**data folder**
 assorted data files that are fundamental to analyses and include both input and output from analyses.
