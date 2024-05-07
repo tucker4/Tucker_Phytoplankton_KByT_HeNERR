@@ -1,0 +1,7 @@
+Season_Spatial,Season_Tucker2021,h0,lci,uci,Spatial
+Nearshore_Summer,Summer,1.147630732,1.078659137,1.216602327,Nearshore
+Nearshore_Winter,Winter,1.657526835,1.49958604,1.81546763,Nearshore
+Offshore_Summer,Summer,1.379241768,1.294896193,1.463587342,Offshore
+Offshore_Winter,Winter,1.727546112,1.559260955,1.89583127,Offshore
+Transition_Summer,Summer,1.469355452,1.293656776,1.645054127,Transition
+Transition_Winter,Winter,2.388471005,2.106588428,2.670353581,Transition

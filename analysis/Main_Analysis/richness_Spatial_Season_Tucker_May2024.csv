@@ -1,0 +1,7 @@
+,Estimates,Standard Errors,p-values,Spatial,Season_Tucker2021,Season_Spatial,est,lci,uci
+(Intercept),44.5349878,1.198661517,0,Nearshore,Summer,Nearshore_Summer,44.5349878,0.599330758,0.599330758
+predictorsWinter,9.387195809,1.624193785,0,Nearshore,Winter,Nearshore_Winter,53.92218361,0.812096893,0.812096893
+(Intercept),43.42461573,1.740964003,0,Transition,Summer,Transition_Summer,43.42461573,0.870482001,0.870482001
+predictorsWinter,6.052781053,3.053845146,0.047,Transition,Winter,Transition_Winter,49.47739679,1.526922573,1.526922573
+(Intercept),35.09641121,1.809966069,0,Offshore,Summer,Offshore_Summer,35.09641121,0.904983034,0.904983034
+predictorsWinter,11.75472457,2.413255254,0,Offshore,Winter,Offshore_Winter,46.85113578,1.206627627,1.206627627
