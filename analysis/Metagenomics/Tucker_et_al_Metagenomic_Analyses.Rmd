@@ -1,0 +1,232 @@
+---
+title: "Tucker_et_al_Metagenomic_Analyses"
+author: "Sarah Tucker"
+date: "5/2/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+QC KByT metagenomes
+```{python}
+
+mkdir 01_QC
+iu-gen-configs samples_QCApril2024.txt -o 01_QC
+ls 01_QC/
+
+
+for ini in 01_QC/*.ini; do iu-filter-quality-minoche $ini; done
+
+```
+
+QC Mende 25m metagenomes
+```{python}
+
+mkdir 01_QC_Mende
+iu-gen-configs mendes_samples_25m_only.txt -o 01_QC_Mende
+ls 01_QC_Mende/
+
+
+for ini in 01_QC_Mende/*.ini; do iu-filter-quality-minoche $ini --ignore-deflines; done
+
+#move files to one folder with the KByT QCed metagenomes
+```
+
+
+
+```{python}
+#Downloading genomes
+
+source /opt/anvio_conda/miniconda3/bin/activate bit
+conda activate bit
+/tank/tucker_data/cyano_april2024/genomes
+
+bit-dl-ncbi-assemblies -w accession_pro_syn_April2024.txt -f fasta
+
+
+```
+
+
+```{python}
+##two accessions were suppressed and so those were downloaded directly from NCBI and the HIMB2104 sequence was not yet processed by NCBI at this time (will add in RefSeq ID when it is available) 
+
+```
+
+```{python}
+source /opt/anvio_conda/miniconda3/bin/activate bio-gen
+anvi-activate-master
+
+gunzip *.gz
+
+##make sure genomes are ready to go in anvio
+
+mkdir fixed-fasta
+for i in *.fa; do
+  anvi-script-reformat-fasta $i -o "fixed-fasta/$i" -l 0 --simplify-names --seq-type NT;
+done
+
+##renaming genomes and contigs within genomes 
+cd fixed-fasta
+source /opt/anvio_conda/miniconda3/bin/activate bio-gen
+for i in `ls *.fa`; do name=$(echo "$i" | sed s/"\.fa"/""/); mapping=$(egrep "^$name" renaming_genomes_April2024.txt); newname=$(echo "$mapping" | awk -F '\t' '{print $2}'); mv "$i" "$newname.fa"; done
+
+
+mkdir updated
+for f in *.fa; 
+do 
+base=$(basename "$f")
+prefix=$(echo "$base" | sed s/".fa$"/""/)
+sed 's/^>c_*./>'$prefix-'/' $f > updated/${prefix}.fa 
+done
+
+
+```
+
+
+
+```{python}
+cd updated/ 
+###build a tree
+source /opt/anvio_conda/miniconda3/bin/activate gtotree
+GToTree -f fasta_file_cyano_May2024.txt -H Cyanobacteria \
+        -n 35 \
+        -j 2 \
+        -m genome_to_id_map_cyano_May2024.txt \
+        -o gtotree_output_cyano_May2024
+
+
+```
+
+
+
+```{python}
+cd updated/ 
+##remove the outgroup
+mkdir outgroup
+mv PCC7421.fa ./outgroup  
+###Move all genomes into a single file
+
+for files in *.fa 
+do 
+cat ${files} >> PRO_SYN_April2024.fa 
+done
+
+mv PRO_SYN_April2024.fa /tank/tucker_data/cyano_april2024/
+
+```
+
+
+
+```{python}
+#### Build a contig db
+anvi-activate-master
+anvi-gen-contigs-database -f PRO_SYN_April2024.fa -o cyanoApril2024-CONTIGS.db -n "Cyano April2024" --num-threads 35
+
+
+###find genes and define their function- in the end I didn't use this in our results but might be good to have :) 
+anvi-run-hmms -c cyanoApril2024-CONTIGS.db --num-threads 35 
+
+anvi-run-ncbi-cogs -c cyanoApril2024-CONTIGS.db --num-threads 35 
+
+anvi-run-kegg-kofams -c cyanoApril2024-CONTIGS.db -T 35
+
+anvi-db-info cyanoApril2024-CONTIGS.db
+
+
+```
+
+
+```{python}
+##read recruitment to metagenomes 
+bowtie2-build PRO_SYN_April2024.fa  cyanoApril2024 --threads 35
+
+
+for sample in `awk '{print $1}' samples_Aloha_KByT_mende_v2.txt`
+do
+ if [ "$sample" == "sample" ]; then continue; fi
+    # do the bowtie mapping to get the SAM file:
+    bowtie2 --threads 35 \
+            -x cyanoApril2024\
+            -1 /tank/tucker_data/01_QC/$sample-QUALITY_PASSED_R1.fastq.gz \
+            -2 /tank/tucker_data/01_QC/$sample-QUALITY_PASSED_R2.fastq.gz \
+            --no-unal \
+            -S $sample.sam
+    # covert the resulting SAM file to a BAM file:
+    samtools view -F 4 -bS $sample.sam > $sample-RAW.bam
+
+    # sort and index the BAM file:
+    samtools sort $sample-RAW.bam -o $sample.bam
+    samtools index $sample.bam
+
+    # remove temporary files:
+    rm $sample.sam $sample-RAW.bam
+done
+```
+
+
+
+```{python}
+##profile the read recruitment data and connect it to your contigs 
+for sample in `awk '{print $1}' samples_Aloha_KByT_mende_v2.txt`
+do
+    if [ "$sample" == "sample" ]; then continue; fi
+
+    anvi-profile -c cyanoApril2024-CONTIGS.db \
+                 -i $sample.bam \
+                 -M 100 \
+                 --profile-SCVs \
+                 --num-threads 35 \
+                 -o $sample
+done
+
+
+anvi-merge */PROFILE.db -o cyanoApril2024-MERGED -c cyanoApril2024-CONTIGS.db
+
+
+for split_name in `sqlite3 cyanoApril2024-CONTIGS.db 'select split from splits_basic_info;'`
+do
+    # in this loop $split_name looks like this AS9601-00000001_split_00001, form which
+    # we can extract the genome name the split belongs to:
+    GENOME=`echo $split_name | awk 'BEGIN{FS="-"}{print $1}'`
+
+    # print it out with a TAB character
+    echo -e "$split_name\t$GENOME"
+done > cyanoApril2024-GENOME-COLLECTION.txt
+
+anvi-import-collection cyanoApril2024-GENOME-COLLECTION.txt -c cyanoApril2024-CONTIGS.db -p cyanoApril2024-MERGED/PROFILE.db -C Genomes
+
+
+
+```
+
+
+```{python}
+##summarize your data- SO much information comes from this- including the q2q3 mean coverage and detection data, you will need those two files from the bins_across_samples folder to bring into R
+anvi-summarize -c cyanoApril2024-CONTIGS.db -p cyanoApril2024-MERGED/PROFILE.db -C Genomes --init-gene-coverages -o cyanoApril2024-SUMMARY
+
+```
+
+```{python}
+anvi-gen-genomes-storage -i cyanoApril2024_internal_genomes.txt -o cyanoApril2024-PAN-GENOMES.db
+
+anvi-estimate-metabolism -c cyanoApril2024-CONTIGS.db  -p cyanoApril2024-MERGED/PROFILE.db -C Genomes 
+
+anvi-pan-genome -g cyanoApril2024-PAN-GENOMES.db --use-ncbi-blast --minbit 0.5 --mcl-inflation 4 --project-name cyanoApril2024-PAN --num-threads 40
+```
+
+
+```{python}
+
+anvi-compute-genome-similarity --internal-genomes cyanoApril2024_internal_genomes.txt --program pyANI --output-dir Cyano-April-pyANI --num-threads 40 -p cyanoApril2024-PAN/cyanoApril2024-PAN-PAN.db
+#you will need the ANIb_percentage_identity.txt to bring into R
+```
+
+##at this point you have all the data needed for analyses in the paper, fun:)
+
+
+
+
+
